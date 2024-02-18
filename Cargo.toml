@@ -1,0 +1,21 @@
+[package]
+name = "zigstack"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dhruv Patel"]
+#description = "Texas Instruments (Ti) ZStack implementation in Rust"
+license = ""
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.79"
+fern = "0.6.2"
+tokio = { version = "1.36.0", features = ["full"] }
+humantime = "2.1.0"
+log = "0.4.20"
+chrono = "0.4.34"
+tokio-test = "0.4.3"
+tokio-serial = { version = "5.4.4", features = ["codec", "libudev"] }
+tokio-util = "0.7.10"
+tokio-stream = "0.1.14"
+crc16 = "0.4.0"
