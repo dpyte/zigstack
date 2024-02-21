@@ -3,7 +3,7 @@
 mod tests {
 	use anyhow::Result;
 	use zigstack::commands::{Command, CommandType, Subsystem};
-	use zigstack::frames::{Header, MonitorFrame, StandardFrame};
+	use zigstack::frames::{FrameStructure, Header, MonitorFrame, StandardFrame};
 
 	#[test]
 	fn test_command_from_bytes() -> Result<()> {
@@ -37,7 +37,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_frame_serialize() {
-		// Your setup code goes here. You should create a MonitorFrame instance.
+	fn test_frame_serialize() -> Result<()> {
+		let mut test_buffer: Vec<u8> = Vec::new();
+		test_buffer.extend_from_slice(&[0xFE, 0x00, 0x21, 0x01, 0x20]);
+
+		let mtframe = MonitorFrame::from_bytes(&test_buffer);
+		assert_eq!(mtframe.serialize(), test_buffer);
+		Ok(())
 	}
 }

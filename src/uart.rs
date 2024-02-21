@@ -1,9 +1,7 @@
 use std::fmt::Debug;
-use std::io::Write;
-
 use anyhow::Result;
-use crc16::*;
-use tokio_serial::{SerialPortBuilderExt, SerialStream};
+use tokio::io::AsyncWriteExt;
+use tokio_serial::{Error, SerialPortBuilderExt, SerialStream};
 
 use crate::constants::{BAUDRATE, CONNECTION};
 
@@ -19,26 +17,23 @@ impl Serial {
 		Ok(Self { port })
 	}
 
-	pub async fn send_ack(&mut self, ack_num: u8) -> Result<()> {
-		let ack_frame = Self::make_frame(0b10000000 | ack_num, None);
-		self.port.write(&*ack_frame)?;
+	pub async fn write(&mut self, data: &[u8]) -> Result<(), Error> {
+		self.port.write_all(data).await?;
 		Ok(())
 	}
 
-	fn make_frame(control: u8, data: Option<Vec<u8>>) -> Vec<u8> {
-		// Construct a frame
-		let mut frame = vec![control];
-
-		if let Some(mut d) = data {
-			frame.append(&mut d);
+	pub async fn read(&mut self) -> Result<Vec<u8>> {
+		let mut buffer = [0u8; 8];
+		let bytes_read = self.port.try_read(&mut buffer)?;
+		if bytes_read > 0 {
+			return Ok(Vec::from(&buffer));
+		} else if bytes_read == 0{
+			return Ok(Vec::new());
 		}
+		Ok(Vec::from(&[255]))
+	}
 
-		// Calculate crc
-		let crc = State::<XMODEM>::calculate(&frame);
-		let crc_arr = vec![(crc >> 8) as u8, (crc % 256) as u8];
-
-		frame.extend_from_slice(&crc_arr);
-		frame.push(0x7E);
-		frame
+	pub async fn close(&mut self) -> Result<()> {
+		Ok(self.port.shutdown().await?)
 	}
 }

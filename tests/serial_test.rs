@@ -5,53 +5,33 @@ use tokio_serial::SerialPortBuilderExt;
 
 #[cfg(test)]
 mod tests {
-	use std::io;
+	use std::time::Duration;
 	use tokio_test;
-	use tokio_util::bytes::BytesMut;
-	use tokio_util::codec::{Decoder, Encoder};
 	use anyhow::Result;
+	use more_asserts::assert_ge;
+	use zigstack::frames::{FrameStructure, MonitorFrame};
 	use zigstack::uart::Serial;
-
-	struct LineCodec;
-
-	impl Decoder for LineCodec {
-		type Item = String;
-		type Error = io::Error;
-
-		fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-			let newline = src.as_ref().iter().position(|b| *b == b'\n');
-			if let Some(n) = newline {
-				let line = src.split_to(n + 1);
-				return match std::str::from_utf8(line.as_ref()) {
-					Ok(s) => Ok(Some(s.to_string())),
-					Err(_) => Err(io::Error::new(io::ErrorKind::Other, "Invalid String")),
-				};
-			}
-			Ok(None)
-		}
-	}
-
-	impl Encoder<String> for LineCodec {
-		type Error = io::Error;
-
-		fn encode(&mut self, _item: String, _dst: &mut BytesMut) -> Result<(), Self::Error> {
-			Ok(())
-		}
-	}
 
 	#[tokio::test]
 	async fn test_serial_connection() -> Result<()> {
+		let test_buffer = [0xFEu8, 0x00, 0x21, 0x01, 0x20];
+
 		let mut serial = Serial::new().await?;
+		serial.write(&test_buffer).await?;
 
+		tokio::time::sleep(Duration::from_millis(3)).await;
 
-		let frm_num = (2 & 0x70) >> 4;
-		let retx = (2 & 0x08) >> 3;
-		let recv_seq = (frm_num + 1) & 7;
+		let mut resp = serial.read().await?;
+		if resp[resp.len() - 1] == 0 {
+			resp = resp[0..resp.len()-1].to_owned()
+		}
 
-		serial.send_ack(recv_seq).await?;
+		let frame = MonitorFrame::from_bytes(resp.as_slice());
+		let subsystem = frame.command().subsystem();
+		let fr_type = frame.command().cmd_type();
 
-
-
+		let resp = frame.serialize();
+		assert_ge!(resp.len(), 4);
 		Ok(())
 	}
 }

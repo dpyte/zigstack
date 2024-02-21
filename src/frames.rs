@@ -13,7 +13,7 @@ use crate::constants::SOF;
 pub fn calc_fcs(data: &[u8]) -> u8 {
 	const INITIAL: u8 = 0;
 	let res = data.iter().fold(INITIAL, |acc, &x| acc ^ x);
-	res as u8
+	res
 }
 
 
@@ -32,6 +32,21 @@ pub fn calc_fcs(data: &[u8]) -> u8 {
 pub struct Header {
 	len: u8,
 	command: Command,
+}
+
+
+/// Extended Header
+///     7 6 5 4 3 2 1 0
+/// ... +---------+--+-----------------+
+///     | Version |  |  Header Bytes   |
+/// ... +---------+--+-----------------+
+///     |-  1 Byte  -| Optional Bytes
+#[derive(Debug, Clone)]
+pub struct ExtendedHeader {
+	// only care about the upper 5-bits
+	version: u8,
+	// only care about the lower 3-bits
+	id: u8,
 }
 
 ///
@@ -84,17 +99,22 @@ pub struct StandardFrame {
 /// The ExtendedFrame struct does not introduce any new fields or methods beyond those already defined in the
 /// Header struct, but it provides a more specialized representation of the extended frame.
 ///
+#[derive(Debug, Clone)]
 pub struct ExtendedFrame {
 
 }
 
-/// Represents a Standard Frame.
+/// Represents a frame type of monitor.
+#[derive(Debug)]
 pub enum MonitorFrame {
 	StandardFrame(StandardFrame),
 	ExtendedFrame(ExtendedFrame),
 }
 
-trait FrameStructure {
+/// Trait for defining the structure of a frame.
+///
+/// This trait provides a contract for implementing the `serialize` method, which returns a vector of bytes representing the serialized frame. It is intended
+pub trait FrameStructure {
 	fn serialize(&self) -> Vec<u8>;
 }
 
@@ -131,17 +151,17 @@ impl StandardFrame {
 	pub fn from_bytes(data: &[u8]) -> Self {
 		let header = Header::from_bytes(&[data[0], data[1], data[2]])
 			.expect("invalid header frame");
-		let data = Vec::from(&data.clone()[3..]);
+		let mut data = Vec::new();
+
+		if data.len() > 3 {
+			data = Vec::from(&data.clone()[3..]);
+		}
 		Self { header, data }
 	}
 
 	pub fn deserialize(&self, data: &[u8]) -> Self {
 		// just deserialize to Standard frame for now...
-		let bytes_of_int = &data[0..3];
-		let header = Header::from_bytes(&[bytes_of_int[0],
-			bytes_of_int[1], bytes_of_int[2]]).expect("invalid header frame");
-		let data = Vec::from(&data[3..]);
-		StandardFrame { header, data }
+		Self::from_bytes(data)
 	}
 }
 
@@ -154,7 +174,7 @@ impl FrameStructure for MonitorFrame {
 
 				let mut res = Vec::with_capacity(1 + serialized_std_frame.len() + 1);
 
-				res.push(SOF as u8);
+				res.push(SOF);
 				res.extend(serialized_std_frame);
 				res.push(fcs);
 
@@ -166,9 +186,28 @@ impl FrameStructure for MonitorFrame {
 }
 
 impl MonitorFrame  {
-	pub fn from_bytes(data: &[u8]) {
-		let boi = &data[3..253];
-		let header = Header::from_bytes(&[boi[0], boi[1], boi[2]]);
+	pub fn from_bytes(data: &[u8]) -> MonitorFrame {
+		let data_len = *&data[1];
+
+		let mut boi = &data[1..4 + data_len as usize];
+		if data.len() > 3 && data.len() - 4 == data_len as usize {
+			boi = &data[1..data.len() - 1]
+		}
+		Self::StandardFrame(StandardFrame::from_bytes(boi))
+	}
+
+	/// @params data: a complete 255 bytes data frame consisting of sof, monitor frame, and the fcs.
+	/// @returns MonitorFrame
+	pub fn deserialize(&self, data: &[u8]) -> MonitorFrame {
+		Self::from_bytes(data)
+	}
+
+	pub fn command(&self) -> Command {
+		let mut std_frame = Command::from_bytes(&[0x00, 0x00]);
+		if let MonitorFrame::StandardFrame(frame) = self {
+			std_frame = frame.header.command.clone();
+		}
+		std_frame
 	}
 }
 
